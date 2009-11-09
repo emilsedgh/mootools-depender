@@ -4,11 +4,24 @@ Class Depender {
 	const ConfigFilename  = 'config.json';
 	const ScriptsFilename = 'scripts.json';
 
+	const Disk            = 'disk';
+	const Memcache        = 'memcache';
+
 	const Post            = 'POST';
 	const Get             = 'GET';
 
 	const Yui             = 'yui';
 	const JSMin           = 'jsmin';
+
+	public function __construct() {
+		$config = $this->getConfig();
+		$this->cache = $config['cache'];
+
+		if ($this->cache == self::Memcache) {
+			$this->memcache = New Memcache;
+			$this->memcache->connect( 'localhost', 11211 );
+		}
+	}
 
 	public function getConfig() {
 		return json_decode( file_get_contents( self::ConfigFilename ), True );
@@ -113,6 +126,7 @@ Class Depender {
 		$atime     = fileatime($script['path']);
 		$cacheId   = $script['name'].'_'.$atime.'_'.$compression;
 		$cached    = $this->getCache($cacheId);
+
 		if ($cached) {
 			return $cached;
 		}
@@ -154,25 +168,37 @@ Class Depender {
 	}
 
 	private function setCache($id, $value) {
-		$file = fopen('cache/'.$id, 'w+') or die("can't open file: cache/".$id);
-		$result = fwrite($file, serialize($value));
-		fclose($file);
-		return $result;
+		if ($this->cache == self::Disk) {
+			$file = fopen('cache/'.$id, 'w+') or die("can't open file: cache/".$id);
+			$result = fwrite($file, serialize($value));
+			fclose($file);
+			return $result;
+		} else {
+			return $this->memcache->set($id, $value);
+		}
 	}
 
 	private function getCache($id) {
-		$file = 'cache/'.$id;
-		if (file_exists($file)) {
-			return unserialize(file_get_contents($file));
+		if ($this->cache == Disk) {
+			$file = 'cache/'.$id;
+			if (file_exists($file)) {
+				return unserialize(file_get_contents($file));
+			} else {
+				return False;
+			}
 		} else {
-			return False;
+			return $this->memcache->get($id);
 		}
 	}
 
 	private function deleteCache($id) {
-		$file = 'cache/'.$id;
-		if (file_exists($file)) {
-			return unlink($file);
+		if ($this->cache == self::Disk) {
+			$file = 'cache/'.$id;
+			if (file_exists($file)) {
+				return unlink($file);
+			}
+		} else {
+			return $this->memcache->delete($id);
 		}
 	}
 
